@@ -1,1 +1,1 @@
-DataPath    D:\Dropbox\¡Ÿ ±\EEG NF System\Data
+DataPath D:\Github\EEG-NF-System\Data
