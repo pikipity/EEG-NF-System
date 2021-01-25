@@ -5,5 +5,13 @@ function SaveInfo(obj)
                  'Birthday',obj.Birthday;
                  'Hand',obj.Hand;
                  'Gender',obj.Gender};
-   writecell(InfoContent,subjInfoFile,'Delimiter','space','QuoteStrings',false);
+   try
+        writecell(InfoContent,subjInfoFile,'Delimiter','space','QuoteStrings',false);
+   catch
+       fid=fopen(subjInfoFile,'w');
+       for i=1:size(InfoContent,1)
+           fprintf(fid,'%s %s\r',InfoContent{i,1},InfoContent{i,2});
+       end
+       fclose(fid);
+   end
 end
