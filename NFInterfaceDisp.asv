@@ -21,7 +21,14 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
         warndlg('Signal Source disconnected!!')
         return
     end
-    SignalInlet=lsl_inlet(SignalStream);
+    
+    try
+        SignalInlet=lsl_inlet(SignalStream);
+    catch
+        warndlg('Signal Source disconnected!!')
+        SignalInlet=[];
+        return;
+    end
     % Create Marker Outlet
     markerID=char(java.util.UUID.randomUUID);
     info = lsl_streaminfo(lib,'NFInterfaceMarker','Markers',1,0,'cf_string',markerID);
@@ -46,22 +53,22 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     FrameCount=[];
     MaxFrameCount=30;
     % NF Parameter
-    fid=fopen(ParameterFile,'r');
-    C=textscan(fid,'%[^\r]');
-    fclose(fid);
-    C=C{1};
-    InterfaceContents={};
-    for i=1:length(C)
-        tmp=split(C{i},',');
-        for j=1:length(tmp)
-            InterfaceContents{i,j}=tmp{j};
-        end
-    end
-    for i=2:size(InterfaceContents,1)
-        for j=1:size(InterfaceContents,2)
-            eval(['InterfacePara(' num2str(i-1) ').' InterfaceContents{1,j} '=''' InterfaceContents{i,j} ''';'])
-        end
-    end
+%     fid=fopen(ParameterFile,'r');
+%     C=textscan(fid,'%[^\r]');
+%     fclose(fid);
+%     C=C{1};
+%     InterfaceContents={};
+%     for i=1:length(C)
+%         tmp=split(C{i},',');
+%         for j=1:length(tmp)
+%             InterfaceContents{i,j}=tmp{j};
+%         end
+%     end
+%     for i=2:size(InterfaceContents,1)
+%         for j=1:size(InterfaceContents,2)
+%             eval(['InterfacePara(' num2str(i-1) ').' InterfaceContents{1,j} '=''' InterfaceContents{i,j} ''';'])
+%         end
+%     end
     % FrashRate
     ifi = Screen('GetFlipInterval', window);
     flipSecs=1/30;
@@ -71,7 +78,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     end
     % Obtain specific keys in keyborad
     escKeys=KbName('ESCAPE');
-    downKeys=KbName('down');
+    spaceKeys=KbName('space');
     % Display
     StartStep=1;
     vbl=Screen('Flip',window);
@@ -109,7 +116,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                 % Disp
                 Screen('TextSize',window,30);
                 Screen('TextFont',window,'Helvetica');
-                DrawFormattedText(window,['Press DOWN to continue'],'center','center',FontColor);
+                DrawFormattedText(window,['Press space to continue'],'center','center',FontColor);
             case 1 % Start step
                 EnableSpace=0;
                 % Check start
@@ -182,7 +189,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
         % check key
         [~,~,keyCode]=KbCheck;
         if EnableSpace
-            if any(keyCode(downKeys))
+            if any(keyCode(spaceKeys))
                 CurrentStep=CurrentStep+1;
                 StartStep=1;
             end
@@ -192,8 +199,8 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
         end
     end
     % Close window
-    SignalInlet.close_stream();
-    delete(SignalInlet);
+%     SignalInlet.close_stream();
+%     delete(SignalInlet);
     delete(MarkerOutlet);
     sca;
 end
