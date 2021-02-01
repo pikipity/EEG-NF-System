@@ -9,19 +9,14 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     end
     % Create Signal Inlet
     lib=lsl_loadlib();
-    result = lsl_resolve_byprop(lib,'type','Markers');
-    SignalStream=[];
-    for i=1:length(result)
-        if strcmp(result{i}.source_id,SignalStreamID)
-            SignalStream=result{i};
-            break;
-        end
-    end
-    if isempty(SignalStream)
+    result = lsl_resolve_byprop(lib,'source_id',SignalStreamID);
+    if isempty(result)
         warndlg('Signal Source disconnected!!')
         return
     end
+    SignalStream=result{1};
     SignalInlet=lsl_inlet(SignalStream);
+    SignalInlet.close_stream();
     % Create Marker Outlet
     markerID=char(java.util.UUID.randomUUID);
     info = lsl_streaminfo(lib,'NFInterfaceMarker','Markers',1,0,'cf_string',markerID);
@@ -71,7 +66,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     end
     % Obtain specific keys in keyborad
     escKeys=KbName('ESCAPE');
-    downKeys=KbName('down');
+    downKeys=KbName('DownArrow');
     % Display
     StartStep=1;
     vbl=Screen('Flip',window);
