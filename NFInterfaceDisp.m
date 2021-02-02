@@ -22,14 +22,20 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     end
     % Create Signal Inlet
     lib=lsl_loadlib();
-%     result = lsl_resolve_byprop(lib,'source_id',SignalStreamID);
-%     if isempty(result)
-%         warndlg('Signal Source disconnected!!')
-%         return
-%     end
-%     SignalStream=result{1};
-%     SignalInlet=lsl_inlet(SignalStream);
-%     SignalInlet.close_stream();
+    result = lsl_resolve_byprop(lib,'source_id',SignalStreamID);
+    if isempty(result)
+        warndlg('Signal Source disconnected!!')
+        return
+    end
+    SignalStream=result{1};
+    chNumber=SignalStream.channel_count;
+    SamplingFreq=SignalStream.nominal_srate;
+    DefaultWinLen=100;
+    SignalInlet=lsl_inlet(SignalStream);
+    SignalInlet.close_stream();
+    SignalContainer=zeros(chNumber,SamplingFreq*DefaultWinLen);
+    TimeContainer=-DefaultWinLen:1/SamplingFreq:0;
+    TimeContainer=TimeContainer(2:end);
     % Create Marker Outlet
     markerID=char(java.util.UUID.randomUUID);
     info = lsl_streaminfo(lib,'NFInterfaceMarker','Markers',1,0,'cf_string',markerID);
@@ -87,7 +93,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     IntroTime=3;
     PreviousNFTime=0;
     CalNFTime=0;
-    NFWindow=0.3;
+    NFWindow=1;
     FeedbackValue=0;
     StartStep=1;
     vbl=Screen('Flip',window);
@@ -174,6 +180,12 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                         PreviousNFTime=CurrentStepTime;
                         TargetFeedbackValue=0;
                         % open stream
+                        try
+                            SignalInlet.open_stream(2);
+                        catch
+                            warndlg('Signal source disconnect.');
+                            break;
+                        end
                     end
                     StepType=InterfacePara(NFStep).StepType;
                     MarkerOutlet.push_sample({regexprep(['Start_' StepType],' +','_')});
@@ -190,6 +202,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                     end
                     if strcmp(InterfacePara(NFStep).StepType,'NF')
                         %close stream
+                        SignalInlet.close_stream();
                     end
                 end
                 % Disp
@@ -205,14 +218,58 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                         Screen('TextFont',window,'Helvetica');
                         DrawFormattedText(window,DispString,'center','center',red);
                     case 'NF'
+                        % Read Data
+                        [chunk,stamps]=SignalInlet.pull_chunk();
+                        if ~isempty(chunk)
+                            keepContain=SignalContainer(:,size(chunk,2)+1:end);
+                            SignalContainer=[keepContain chunk];
+                            if size(stamps,2)>1
+                                real_sampling_period=mean(diff(stamps));
+                            else
+                                real_sampling_period=1/SamplingFreq;
+                            end
+                            if TimeContainer(end)<(stamps(1)-DefaultWinLen*real_sampling_period)
+                                TimeContainer=-(length(TimeContainer)*real_sampling_period):real_sampling_period:0;
+                                TimeContainer=TimeContainer(1:end-1)+stamps(1);
+                            end
+                            keepContain=TimeContainer(:,size(chunk,2)+1:end);
+                            TimeContainer=[keepContain stamps];
+                        end
                         if CurrentStepTime-PreviousNFTime>=CalNFTime
                             FeedbackValue=TargetFeedbackValue;
                             PreviousNFTime=CurrentStepTime;
                             CalNFTime=NFWindow;
                             % cal target feedback value
-                            TargetFeedbackValue=rand(1);
+                            CalChannel=str2num(InterfacePara(NFStep).Channel);
+                            if CalChannel>size(SignalContainer,1)
+                                warndlg('Select channel cannot be used');
+                                break;
+                            end
+                            CalData=detrend(SignalContainer.').';
+                            [~,TimeInd]=min(abs(TimeContainer-(TimeContainer(end)-CalNFTime)));
+                            CalData=CalData(CalChannel,TimeInd:end);
+                            CalTime=TimeContainer(TimeInd:end);
+                            cal_sampling_period=mean(diff(CalTime));
                             %
-                            MarkerOutlet.push_sample({regexprep(['FeedbackValue:' num2str(FeedbackValue)],' +','_')});
+                            L=length(CalData);
+                            NFFT=2^nextpow2(L);
+                            FFT_res=fft(CalData,NFFT)/length(CalData);
+                            FFT_res=FFT_res(1:NFFT/2+1);
+                            Fs=1/cal_sampling_period;
+                            FFT_freq=Fs/2*linspace(0,1,NFFT/2+1);
+                            FFT_res=abs(FFT_res);
+                            %
+                            [~,ind_freq_4]=min(abs(FFT_freq-4));
+                            [~,ind_freq_30]=min(abs(FFT_freq-30));
+                            FeedbackFreq=InterfacePara(NFStep).FeedbackFreq;
+                            FeedbackFreq=split(FeedbackFreq,'~');
+                            [~,ind_freq_min]=min(abs(FFT_freq-str2num(FeedbackFreq{1})));
+                            [~,ind_freq_max]=min(abs(FFT_freq-str2num(FeedbackFreq{2})));
+                            UpperValue=sum(FFT_res(ind_freq_min:ind_freq_max))/(str2num(FeedbackFreq{2})-str2num(FeedbackFreq{1}));
+                            LowerValue=sum(FFT_res(ind_freq_4:ind_freq_30))/(30-4);
+                            TargetFeedbackValue=UpperValue/LowerValue;
+                            %
+                            MarkerOutlet.push_sample({regexprep(['CalValue:' num2str(TargetFeedbackValue)],' +','_')});
                         end
                         FeedbackValue=FeedbackValue+(TargetFeedbackValue-FeedbackValue)/(PreviousNFTime+CalNFTime-CurrentStepTime)*((waitframes-0.5)*ifi);
                         if FeedbackValue>1
@@ -292,8 +349,8 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
         end
     end
     % Close window
-%     SignalInlet.close_stream();
-%     delete(SignalInlet);
+    SignalInlet.close_stream();
+    delete(SignalInlet);
     MarkerOutlet.push_sample({'System_Close'})
     delete(MarkerOutlet);
     PsychPortAudio('Close', pahandle);
