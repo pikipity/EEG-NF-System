@@ -94,13 +94,30 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
     PreviousNFTime=0;
     CalNFTime=0;
     NFWindow=1;
+    FirstNFWindow=1;
+    SlipNFWindow=0;
+    MaxFeedbackValue=1;
     FeedbackValue=0;
     StartStep=1;
     vbl=Screen('Flip',window);
     MaxStepTime=0;
+    %
+    BeepFlag=0;
+    MarkerMessage='';
+    MarkerSenderFlag=0;
+    %
     while 1
         % Update screen
         vbl=Screen('Flip',window,vbl+(waitframes-0.5)*ifi);
+        if MarkerSenderFlag
+            MarkerOutlet.push_sample({MarkerMessage})
+            MarkerSenderFlag=0;
+        end
+        if BeepFlag
+            PsychPortAudio('Start', pahandle, repetitions, startCue, waitForDeviceStart);
+            PsychPortAudio('Stop', pahandle, 1, 1);
+            BeepFlag=0;
+        end
         CurrentStepTime=vbl;
         % plot framenumber
         FrameCount=[FrameCount vbl];
@@ -125,7 +142,9 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                 if StartStep
                     MaxStepTime=inf;
                     StartStep=0;
-                    MarkerOutlet.push_sample({'Start_Interface'})
+                    MarkerSenderFlag=1;
+                    MarkerMessage='Start_Interface';
+%                     MarkerOutlet.push_sample({'Start_Interface'})
                 end
                 % Check end
                 % no end
@@ -146,14 +165,18 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                     MaxStepTime=CurrentStepTime+IntroTime;
                     StartStep=0;
                     StepType=InterfacePara(NFStep).StepType;
-                    MarkerOutlet.push_sample({regexprep(['Start_Intro_' StepType],' +','_')});
+                    MarkerSenderFlag=1;
+                    MarkerMessage=regexprep(['Start_Intro_' StepType],' +','_');
+%                     MarkerOutlet.push_sample({regexprep(['Start_Intro_' StepType],' +','_')});
                 end
                 % Check end
                 if MaxStepTime-CurrentStepTime<=0
                     CurrentStep=2;
                     StartStep=1;
                     StepType=InterfacePara(NFStep).StepType;
-                    MarkerOutlet.push_sample({regexprep(['Stop_Intro_' StepType],' +','_')});
+                    MarkerSenderFlag=1;
+                    MarkerMessage=regexprep(['Stop_Intro_' StepType],' +','_');
+%                     MarkerOutlet.push_sample({regexprep(['Stop_Intro_' StepType],' +','_')});
                 end
                 % Disp
                 switch InterfacePara(NFStep).StepType
@@ -176,7 +199,7 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                     MaxStepTime=CurrentStepTime+str2num(InterfacePara(NFStep).Duration);
                     StartStep=0;
                     if strcmp(InterfacePara(NFStep).StepType,'NF')
-                        CalNFTime=NFWindow;
+                        CalNFTime=FirstNFWindow;
                         PreviousNFTime=CurrentStepTime;
                         TargetFeedbackValue=0;
                         % open stream
@@ -188,17 +211,22 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                         end
                     end
                     StepType=InterfacePara(NFStep).StepType;
-                    MarkerOutlet.push_sample({regexprep(['Start_' StepType],' +','_')});
+                    MarkerSenderFlag=1;
+                    MarkerMessage=regexprep(['Start_' StepType],' +','_');
+%                     MarkerOutlet.push_sample({regexprep(['Start_' StepType],' +','_')});
                 end
                 % Check end
                 if MaxStepTime-CurrentStepTime<=0
                     CurrentStep=1;
                     StartStep=1;
                     StepType=InterfacePara(NFStep).StepType;
-                    MarkerOutlet.push_sample({regexprep(['Stop_' StepType],' +','_')});
+                    MarkerSenderFlag=1;
+                    MarkerMessage=regexprep(['Stop_' StepType],' +','_');
+%                     MarkerOutlet.push_sample({regexprep(['Stop_' StepType],' +','_')});
                     if strcmp(InterfacePara(NFStep).StepType,'Open Eyes') || strcmp(InterfacePara(NFStep).StepType,'Close Eyes')
-                        PsychPortAudio('Start', pahandle, repetitions, startCue, waitForDeviceStart);
-                        PsychPortAudio('Stop', pahandle, 1, 1);
+                        BeepFlag=1;
+%                         PsychPortAudio('Start', pahandle, repetitions, startCue, waitForDeviceStart);
+%                         PsychPortAudio('Stop', pahandle, 1, 1);
                     end
                     if strcmp(InterfacePara(NFStep).StepType,'NF')
                         %close stream
@@ -238,19 +266,19 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                         if CurrentStepTime-PreviousNFTime>=CalNFTime
                             FeedbackValue=TargetFeedbackValue;
                             PreviousNFTime=CurrentStepTime;
-                            CalNFTime=NFWindow;
+                            CalNFTime=SlipNFWindow;
                             % cal target feedback value
                             CalChannel=str2num(InterfacePara(NFStep).Channel);
                             if CalChannel>size(SignalContainer,1)
                                 warndlg('Select channel cannot be used');
                                 break;
                             end
-                            CalData=detrend(SignalContainer.').';
-                            [~,TimeInd]=min(abs(TimeContainer-(TimeContainer(end)-CalNFTime)));
-                            CalData=CalData(CalChannel,TimeInd:end);
+                            [~,TimeInd]=min(abs(TimeContainer-(TimeContainer(end)-NFWindow)));
+                            CalData=SignalContainer(CalChannel,TimeInd:end);
                             CalTime=TimeContainer(TimeInd:end);
                             cal_sampling_period=mean(diff(CalTime));
                             %
+                            CalData=detrend(CalData);
                             L=length(CalData);
                             NFFT=2^nextpow2(L);
                             FFT_res=fft(CalData,NFFT)/length(CalData);
@@ -269,33 +297,42 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                             LowerValue=sum(FFT_res(ind_freq_4:ind_freq_30))/(30-4);
                             TargetFeedbackValue=UpperValue/LowerValue;
                             %
-                            MarkerOutlet.push_sample({regexprep(['CalValue:' num2str(TargetFeedbackValue)],' +','_')});
+%                             TargetFeedbackValue=rand(1)*5;
+                            %
+                            MarkerSenderFlag=1;
+                            MarkerMessage=regexprep(['CalValue:' num2str(TargetFeedbackValue)],' +','_');
+%                             MarkerOutlet.push_sample({regexprep(['CalValue:' num2str(TargetFeedbackValue)],' +','_')});
                         end
-                        FeedbackValue=FeedbackValue+(TargetFeedbackValue-FeedbackValue)/(PreviousNFTime+CalNFTime-CurrentStepTime)*((waitframes-0.5)*ifi);
-                        if FeedbackValue>1
-                            FeedbackValue=1;
-                        end
-                        if FeedbackValue<0
-                            FeedbackValue=0;
+                        if (PreviousNFTime+CalNFTime-CurrentStepTime)==0
+                            FeedbackValue=TargetFeedbackValue;
+                        else
+                            FeedbackValue=FeedbackValue+(TargetFeedbackValue-FeedbackValue)/(PreviousNFTime+CalNFTime-CurrentStepTime)*((waitframes-0.5)*ifi);
                         end
                         % Dsip
-                        if strcmp(InterfacePara(NFStep).FeedbackDirection,'Positive')
-                            FeedbackThreshold=str2num(InterfacePara(NFStep).FeedbackThreshold);
-                        else
-                            FeedbackThreshold=1-str2num(InterfacePara(NFStep).FeedbackThreshold);
+                        FeedbackThreshold=str2num(InterfacePara(NFStep).FeedbackThreshold);
+                        MaxFeedbackValue=max([MaxFeedbackValue FeedbackValue FeedbackThreshold]);
+                        if MaxFeedbackValue==FeedbackThreshold
+                            MaxFeedbackValue=MaxFeedbackValue+0.2*MaxFeedbackValue;
                         end
+                        MaxFeedbackRate=1;
+                        if strcmp(InterfacePara(NFStep).FeedbackDirection,'Positive')
+                            FeedbackThresholdRate=FeedbackThreshold/MaxFeedbackValue;
+                        else
+                            FeedbackThresholdRate=1-FeedbackThreshold/MaxFeedbackValue;
+                        end
+                        FeedbackValueRate=FeedbackValue/MaxFeedbackValue;
                         RectWidth=floor(100);
                         RectHigh=floor(MaxYLim*0.8);
                         wholeRect=floor([xCenter-RectWidth/2,...
                                          (MaxYLim-RectHigh)/2,...
                                          xCenter+RectWidth/2,...
-                                         (MaxYLim-RectHigh)/2+RectHigh]);
+                                         (MaxYLim-RectHigh)/2+RectHigh*MaxFeedbackRate]);
                         dispRect=floor([xCenter-RectWidth/2,...
-                                        (MaxYLim-RectHigh)/2+RectHigh*(1-FeedbackValue),...
+                                        (MaxYLim-RectHigh)/2+RectHigh*(1-FeedbackValueRate),...
                                         xCenter+RectWidth/2,...
                                         (MaxYLim-RectHigh)/2+RectHigh]);
                         NFLine=floor([xCenter-RectWidth/2,...
-                                        (MaxYLim-RectHigh)/2+RectHigh*(1-FeedbackThreshold),...
+                                        (MaxYLim-RectHigh)/2+RectHigh*(1-FeedbackThresholdRate),...
                                         xCenter+RectWidth/2,...
                                         (MaxYLim-RectHigh)/2+RectHigh]);
                         if FeedbackValue>FeedbackThreshold
@@ -317,13 +354,17 @@ function NFInterfaceDisp(DataPath,SignalStreamID)
                 if StartStep
                     MaxStepTime=CurrentStepTime+10;
                     StartStep=0;
-                    MarkerOutlet.push_sample({'Start_Rest'});
+                    MarkerSenderFlag=1;
+                    MarkerMessage='Start_Rest';
+%                     MarkerOutlet.push_sample({'Start_Rest'});
                 end
                 % Check end
                 if MaxStepTime-CurrentStepTime<=0
                     CurrentStep=1;
                     StartStep=1;
-                    MarkerOutlet.push_sample({'Stop_Rest'});
+                    MarkerSenderFlag=1;
+                    MarkerMessage='Stop_Rest';
+%                     MarkerOutlet.push_sample({'Stop_Rest'});
                 end
                 % Disp
                 DispTime=floor(MaxStepTime-CurrentStepTime);
