@@ -6,6 +6,8 @@
 
 神经反馈训练界面使用 [Psychophysics Toolbox Version 3](http://psychtoolbox.org/)，可进行编程对反馈界面进行调整。
 
+版权遵守 [署名-非商业性使用-禁止演绎 4.0 国际](https://creativecommons.org/licenses/by-nc-nd/4.0/deed.zh)
+
 ## 安装
 
 1. 安装 labstreaminglayer，具体安装过程请参阅 [github.com/labstreaminglayer/liblsl-Matlab](https://github.com/labstreaminglayer/liblsl-Matlab)。
