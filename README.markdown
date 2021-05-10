@@ -44,5 +44,5 @@
 8. 在神经反馈界面，开始神经反馈训练。
 9. 再次点击信号记录界面点击 `Recording` 停止记录信号与神经反馈标记。
 
-基本操作的视频：
+基本操作的视频：[https://www.bilibili.com/video/BV1AQ4y1o79B/](https://www.bilibili.com/video/BV1AQ4y1o79B/)
 
